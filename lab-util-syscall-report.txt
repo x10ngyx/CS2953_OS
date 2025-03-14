@@ -1,0 +1,19 @@
+sleep:
+编写用户态程序 sleep.c ,使用了系统调用 sleep.
+pingpong:
+编写用户态程序 pingpong.c ,使用的系统调用: 与进程控制相关的 fork, wait; 与读写/通信相关的 pipe, read, write.
+trace:
+1. 用户态程序 trace.c (已提供),使用的系统调用: trace
+2. 增加系统调用 trace, 
+  - 在 syscall.h syscall.c 中加入这条系统调用 
+  - 在 user.h usys.pl 中登记, 使用户态程序能够调用到
+  - 在 sysproc.c 中实现这条系统调用，
+    具体而言，为 PCB 增加一个 mask 字段，trace 会修改这一字段，fork 会采用继承的策略。
+    每次系统调用时，会检查 mask 以决定是否打印调试信息
+sysinfo:
+1. 用户态测试程序 sysinfotest.c(已提供) ,使用的系统调用: sysinfo
+2. 增加系统调用 sysinfo, 基本流程与 trace 相同，具体而言：
+  - 增加辅助函数 get_nproc, 统计非 UNUSE 的进程数
+  - 增加辅助函数 get_freemem, 统计空闲页数
+  - 由于地址空间不同，系统调用返回时，需要借助 copyout 将数据拷贝到用户空间
+

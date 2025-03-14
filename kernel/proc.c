@@ -169,6 +169,7 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->mask = 0;
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -321,6 +322,9 @@ fork(void)
   acquire(&np->lock);
   np->state = RUNNABLE;
   release(&np->lock);
+
+  // no need to hold the lock here
+  np -> mask = p -> mask;
 
   return pid;
 }
@@ -685,4 +689,20 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+// Return the number of processes whose state is not UNUSED
+uint64
+get_nproc(void)
+{
+  uint num = 0;
+  uint i;
+  for (i = 0; i < NPROC; i++) {
+      acquire(&(proc[i].lock));
+      if (proc[i].state != UNUSED) {
+          num++;
+      }
+      release(&(proc[i].lock));
+  }
+  return num;
 }
