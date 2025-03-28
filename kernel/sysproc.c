@@ -60,6 +60,7 @@ sys_sleep(void)
   acquire(&tickslock);
   ticks0 = ticks;
 #ifdef LAB_TRAPS
+  backtrace();
 #endif
   while(ticks - ticks0 < n){
     if(killed(myproc())){
@@ -114,7 +115,8 @@ sys_trace(void)
 }
 
 uint64
-sys_sysinfo(void) {
+sys_sysinfo(void)
+{
   uint64 addr;
   argaddr(0, &addr);
   struct sysinfo info;
@@ -124,4 +126,30 @@ sys_sysinfo(void) {
   if(copyout(p->pagetable, addr, (char*)(&info), sizeof(info)) < 0)
       return -1;
   return 0;
+}
+
+uint64
+sys_sigalarm(void)
+{
+  struct proc *p = myproc();
+  int n;
+  uint64 handler;
+  argint(0, &n);
+  argaddr(1, &handler);
+  p->alarm_handler = (void(*)()) handler;
+  p->ticks_for_alarm = n;
+  p->ticks_used = 0;
+  return 0;
+}
+
+uint64
+sys_sigreturn(void)
+{
+  struct proc *p = myproc();
+  if (p->in_alarm) {
+    p->in_alarm = 0;
+    *p->trapframe = *p->alarmframe;
+    p->ticks_used = 0;
+  }
+  return p->alarmframe->a0;
 }

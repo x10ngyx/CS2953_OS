@@ -105,4 +105,9 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
   int mask;                    // Trace mask
+  int ticks_for_alarm;    
+  void (*alarm_handler)(void); 
+  int ticks_used;
+  struct trapframe *alarmframe;
+  int in_alarm;
 };
