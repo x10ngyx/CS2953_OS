@@ -1,0 +1,12 @@
+memory allocator:
+- 每个 CPU 核心有一个自己的内存池, 每个内存池有一个自己的锁
+- freerange 可以将所有的可用内存放到当前 CPU 的内存池中, 也可以均匀地分配进所有 CPU 的内存池
+- kalloc 发现当前 CPU 的内存池没有可用内存时, 会去其他 CPU 的内存池中偷,
+  一次偷一半效率可能更高, 不过一次偷一块也可以
+- kfree 释放内存时, 会将内存放到当前 CPU 的内存池中
+buffer cache:
+- 使用 Hashtable + Chaining 的结构储存 buffer, 用 blockno 作为 key。
+- 每个 bucket 有一个锁, 还有一个全局锁。
+- get 时，先拿 bucket 锁，尝试寻找目标 buffer / 如没有，在 bucket 能否替换。
+  如均失败，则拿全局锁和所有 bucket 锁（先放下当前 buckect 锁，然后依次拿，避免死锁），去其他 bucket 中替换。
+- bpin 应当保证调用时 buffer 有人在使用，否则在 id = b->blockno 以后可能被换出，导致 pin 到新页面
