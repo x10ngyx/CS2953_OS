@@ -1,0 +1,7 @@
+speed up system calls:
+- 每个进程有一个独享的物理内存页，页内起始处记录了 pid ，权限为用户态下可读，该页与虚拟地址 USYSCALL 绑定
+print a page table:
+- vmprint 函数遍历三层页表，并打印相关信息
+detect which pages have been accessed:
+- 检查某个虚拟地址空间下的一段地址范围，收集 accessed bit 信息并重置
+- 返回值需用 copyout 复制到用户态
