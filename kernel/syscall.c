@@ -109,9 +109,7 @@ extern uint64 sys_sigreturn(void);
 #ifdef LAB_NET
 extern uint64 sys_connect(void);
 #endif
-#ifdef LAB_PGTBL
 extern uint64 sys_pgaccess(void);
-#endif
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -144,9 +142,7 @@ static uint64 (*syscalls[])(void) = {
 #ifdef LAB_NET
 [SYS_connect] sys_connect,
 #endif
-#ifdef LAB_PGTBL
 [SYS_pgaccess] sys_pgaccess,
-#endif
 };
 
 // An array of strings that correspond to the names of the system calls.
@@ -179,9 +175,7 @@ static char* syscall_names[] = {
 #ifdef LAB_NET
   [SYS_connect] "connect",
 #endif
-#ifdef LAB_PGTBL
   [SYS_pgaccess] "pgaccess",
-#endif
 };
 
 

@@ -73,8 +73,6 @@ sys_sleep(void)
   return 0;
 }
 
-
-#ifdef LAB_PGTBL
 uint64
 sys_pgaccess(void)
 {
@@ -101,7 +99,7 @@ sys_pgaccess(void)
   copyout(pagetable, buf, (char*)&res, sizeof(uint64));
   return 0;
 }
-#endif
+
 
 uint64
 sys_kill(void)

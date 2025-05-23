@@ -5,6 +5,7 @@
     "user.h": "c",
     "stddef.h": "c",
     "proc.h": "c",
-    "defs.h": "c"
+    "defs.h": "c",
+    "memlayout.h": "c"
   }
 }

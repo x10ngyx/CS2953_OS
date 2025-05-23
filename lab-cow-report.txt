@@ -1,0 +1,27 @@
+对每个物理页维护引用计数，
+kalloc 处将引用置1（在页面初次被分配时调用），
+uvmcopy 处如果是只读页面，直接映射并增加引用（cow）即可，若是可写页面，还需修改 W, COW 权限位以便后续识别
+kfree 处减小引用，若引用为 0，则释放物理页
+出现 cow 导致的 page fault 时，分配新页的同时调用 kfree 释放一次原页，原页权限不变，新页权限恢复正常
+
+== Test running cowtest == 
+$ make qemu-gdb
+(11.0s) 
+== Test   simple == 
+  simple: OK 
+== Test   three == 
+  three: OK 
+== Test   file == 
+  file: OK 
+== Test usertests == 
+$ make qemu-gdb
+(55.7s) 
+== Test   usertests: copyin == 
+  usertests: copyin: OK 
+== Test   usertests: copyout == 
+  usertests: copyout: OK 
+== Test   usertests: all tests == 
+  usertests: all tests: OK 
+== Test lab-cow-report.txt == 
+lab-cow-report.txt: OK 
+Score: 114/114

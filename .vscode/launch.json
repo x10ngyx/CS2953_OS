@@ -1,0 +1,20 @@
+{
+  "configurations": [
+    {
+      "type": "cppdbg",
+      "request": "launch",
+      "name": "Launch xv6 Kernel",
+      "program": "${workspaceFolder}/${input:kernelExecutable}",
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": true,
+      "preLaunchTask": "build-kernel"
+    }
+  ],
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "kernelExecutable",
+      "description": "Enter the path to the kernel executable (e.g., kernel/kernel)"
+    }
+  ]
+}

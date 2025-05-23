@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -14,6 +16,11 @@ pagetable_t kernel_pagetable;
 extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
+
+
+extern int ref[];
+extern struct spinlock ref_lock;
+
 
 // Make a direct-map page table for the kernel.
 pagetable_t
@@ -315,7 +322,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -323,14 +329,19 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
+
+    if(*pte & PTE_W){  
+        *pte &= ~PTE_W;
+        *pte |= PTE_COW;
+    }
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    // child
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
       goto err;
     }
+    acquire(&ref_lock);
+    ref[pa2index(pa)] ++;
+    release(&ref_lock);
   }
   return 0;
 
@@ -355,21 +366,28 @@ uvmclear(pagetable_t pagetable, uint64 va)
 // Copy from kernel to user.
 // Copy len bytes from src to virtual address dstva in a given page table.
 // Return 0 on success, -1 on error.
+
 int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
   pte_t *pte;
-
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
     if(va0 >= MAXVA)
       return -1;
     pte = walk(pagetable, va0, 0);
-    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 ||
-       (*pte & PTE_W) == 0)
+    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0)
       return -1;
-    pa0 = PTE2PA(*pte);
+    if ((*pte & PTE_W) == 0 && (*pte & PTE_COW) == 0)
+      return -1; // not writable
+    // copy-on-write page
+    if(*pte & PTE_COW) {
+      startcowcopy(va0);
+      pa0 = walkaddr(pagetable, va0);
+    } else {
+      pa0 = PTE2PA(*pte);
+    }
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
@@ -476,5 +494,77 @@ vmprint(pagetable_t pagetable)
         }
       }
     }
+  }
+}
+
+// uint64 cow_handler(pagetable_t pagetable, uint64 va) {
+//     pte_t *pte;
+//     uint64 pa;
+//     va = PGROUNDDOWN(va);
+
+//     // out of bounds
+//     if(va >= MAXVA)
+//         return 0;
+
+//     pte = walk(pagetable, va, 0);
+//     // does not exist
+//     if(pte == 0)
+//         return 0;
+//     // page invalid
+//     if((*pte & PTE_V) == 0)
+//         return 0;
+//     // user cannot access
+//     if((*pte & PTE_U) == 0)
+//         return 0;
+//     // not copy-on-write page
+//     if((*pte & PTE_COW) == 0)
+//         return 0;
+//     pa = PTE2PA(*pte);
+
+//     char *mem;
+//     if((mem = kalloc()) == 0)
+//         return 0;
+//     memmove(mem, (char*)pa, PGSIZE);
+//     uint64 flags = PTE_FLAGS(*pte);
+//     kfree((void*)pa);
+//     flags = (flags & ~PTE_COW) | PTE_W;
+//     *pte = PA2PTE((uint64)mem) | flags;
+//     return (uint64)mem;
+// }
+
+int
+iscowpage(uint64 va){
+  struct proc* p = myproc();
+  va = PGROUNDDOWN((uint64)va);
+  if(va >= MAXVA)
+    return 0;
+  pte_t* pte = walk(p->pagetable,va,0);
+  if(pte == 0)
+    return 0;
+  if((va < p->sz)&& (*pte & PTE_COW) && (*pte & PTE_V) && (*pte & PTE_U)){
+    return 1;
+  } else
+    return 0;
+}
+
+void
+startcowcopy(uint64 va){
+  struct proc* p = myproc();
+  va = PGROUNDDOWN((uint64)va);
+  pte_t* pte = walk(p->pagetable,va,0);
+  uint64 pa = PTE2PA(*pte);
+
+  void* new = cowcopy_pa((void*)pa);
+  if((uint64)new == 0){
+    panic("cowcopy_pa err\n");
+    exit(-1);
+  }
+
+  uint64 flags = (PTE_FLAGS(*pte) | PTE_W) & (~PTE_COW);
+  uvmunmap(p->pagetable, va, 1, 0);
+
+  if(mappages(p->pagetable, va, PGSIZE, (uint64)new, flags) == -1){
+    kfree(new);
+    panic("cow mappages failed");
   }
 }
