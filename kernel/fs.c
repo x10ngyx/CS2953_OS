@@ -379,76 +379,121 @@ iunlockput(struct inode *ip)
 // Return the disk block address of the nth block in inode ip.
 // If there is no such block, bmap allocates one.
 // returns 0 if out of disk space.
-static uint
-bmap(struct inode *ip, uint bn)
-{
-  uint addr, *a;
-  struct buf *bp;
 
-  if(bn < NDIRECT){
-    if((addr = ip->addrs[bn]) == 0){
-      addr = balloc(ip->dev);
-      if(addr == 0)
-        return 0;
-      ip->addrs[bn] = addr;
-    }
-    return addr;
-  }
-  bn -= NDIRECT;
+static uint bmap(struct inode *ip, uint bn) {
+    uint addr, *a;
+    struct buf *bp;
 
-  if(bn < NINDIRECT){
-    // Load indirect block, allocating if necessary.
-    if((addr = ip->addrs[NDIRECT]) == 0){
-      addr = balloc(ip->dev);
-      if(addr == 0)
-        return 0;
-      ip->addrs[NDIRECT] = addr;
+    // direct 
+    if(bn < NDIRECT){
+      if((addr = ip->addrs[bn]) == 0) // allocate
+        ip->addrs[bn] = addr = balloc(ip->dev);
+      return addr;
     }
-    bp = bread(ip->dev, addr);
-    a = (uint*)bp->data;
-    if((addr = a[bn]) == 0){
-      addr = balloc(ip->dev);
-      if(addr){
-        a[bn] = addr;
+    bn -= NDIRECT;
+
+    // level 1
+    if(bn < INDEX_NUM_1){
+      if((addr = ip->addrs[INDEX_ENTRY_1]) == 0) // allocate
+        ip->addrs[INDEX_ENTRY_1] = addr = balloc(ip->dev);
+      bp = bread(ip->dev, addr);
+      a = (uint*)bp->data;
+      if((addr = a[bn]) == 0){
+        a[bn] = addr = balloc(ip->dev);
         log_write(bp);
       }
+      brelse(bp);
+      return addr;
     }
-    brelse(bp);
-    return addr;
-  }
-  panic("bmap: out of range");
+    bn -= INDEX_NUM_1;
+
+    // level 2
+    if(bn < INDEX_NUM_2) {
+      uint addr2, *a2, index;
+      struct buf* bp2;
+
+      if((addr2 = ip->addrs[INDEX_ENTRY_2]) == 0) // allocate
+        ip->addrs[INDEX_ENTRY_2] = addr2 = balloc(ip->dev);
+
+      bp2 = bread(ip->dev, addr2);
+      a2 = (uint*)bp2->data;
+      index = bn / INDEX_NUM_1;
+      bn %= INDEX_NUM_1;
+      if((addr = a2[index]) == 0) { // allocate
+        a2[index] = addr = balloc(ip->dev);
+        log_write(bp2);
+      }
+      brelse(bp2);
+
+      bp = bread(ip->dev, addr);
+      a = (uint*)bp->data;
+      if((addr = a[bn]) == 0) { // allocate
+        a[bn] = addr = balloc(ip->dev);
+        log_write(bp);
+      }
+      brelse(bp);
+      return addr;
+    }
+
+    panic("bmap: out of range");
 }
 
 // Truncate inode (discard contents).
 // Caller must hold ip->lock.
-void
-itrunc(struct inode *ip)
-{
-  int i, j;
-  struct buf *bp;
-  uint *a;
 
-  for(i = 0; i < NDIRECT; i++){
-    if(ip->addrs[i]){
-      bfree(ip->dev, ip->addrs[i]);
-      ip->addrs[i] = 0;
-    }
-  }
+void itrunc(struct inode *ip) {
+    int i, j;
+    struct buf *bp;
+    uint *a;
 
-  if(ip->addrs[NDIRECT]){
-    bp = bread(ip->dev, ip->addrs[NDIRECT]);
-    a = (uint*)bp->data;
-    for(j = 0; j < NINDIRECT; j++){
-      if(a[j])
-        bfree(ip->dev, a[j]);
+    // direct
+    for(i = 0; i < NDIRECT; i++){
+      if(ip->addrs[i]){
+        bfree(ip->dev, ip->addrs[i]);
+        ip->addrs[i] = 0;
+      }
     }
-    brelse(bp);
-    bfree(ip->dev, ip->addrs[NDIRECT]);
-    ip->addrs[NDIRECT] = 0;
-  }
-  
-  ip->size = 0;
-  iupdate(ip);
+
+    // level 1
+    if(ip->addrs[INDEX_ENTRY_1]){
+      bp = bread(ip->dev, ip->addrs[INDEX_ENTRY_1]);
+      a = (uint*)bp->data;
+      for(j = 0; j < INDEX_NUM_1; j++){
+        if(a[j]) bfree(ip->dev, a[j]);
+      }
+      brelse(bp);
+      bfree(ip->dev, ip->addrs[INDEX_ENTRY_1]);
+      ip->addrs[INDEX_ENTRY_1] = 0;
+    }
+
+    // level 2
+    if(ip->addrs[INDEX_ENTRY_2]) {
+        struct buf* bp2;
+        uint* a2;
+        bp2 = bread(ip->dev, ip->addrs[INDEX_ENTRY_2]);
+        a2 = (uint*)bp2->data;
+
+        // check each level 1 index
+        for(int k = 0; k < INDEX_NUM_1; k++) {
+            if(a2[k]) {
+                bp = bread(ip->dev, a2[k]);
+                a = (uint*)bp->data;
+                for(j = 0; j < INDEX_NUM_1; j++) {
+                    if(a[j])
+                        bfree(ip->dev, a[j]);
+                }
+                brelse(bp);
+                bfree(ip->dev, a2[k]);
+            }
+        }
+
+        brelse(bp2);
+        bfree(ip->dev, ip->addrs[INDEX_ENTRY_2]);
+        ip->addrs[INDEX_ENTRY_2] = 0;
+    }
+
+    ip->size = 0;
+    iupdate(ip);
 }
 
 // Copy stat information from inode.

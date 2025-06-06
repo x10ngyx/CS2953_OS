@@ -105,6 +105,7 @@ extern uint64 sys_trace(void);
 extern uint64 sys_sysinfo(void);
 extern uint64 sys_sigalarm(void);
 extern uint64 sys_sigreturn(void);
+extern uint64 sys_symlink(void);
 
 #ifdef LAB_NET
 extern uint64 sys_connect(void);
@@ -143,6 +144,7 @@ static uint64 (*syscalls[])(void) = {
 [SYS_connect] sys_connect,
 #endif
 [SYS_pgaccess] sys_pgaccess,
+[SYS_symlink] sys_symlink,
 };
 
 // An array of strings that correspond to the names of the system calls.
@@ -176,6 +178,7 @@ static char* syscall_names[] = {
   [SYS_connect] "connect",
 #endif
   [SYS_pgaccess] "pgaccess",
+  [SYS_symlink] "symlink",
 };
 
 

@@ -301,6 +301,29 @@ create(char *path, short type, short major, short minor)
   return 0;
 }
 
+static struct inode* namei_check_symlink(char *path, uint depth, int omode) {
+    if(depth > 10) {
+        return 0;
+    }
+    struct inode *ip;
+    if((ip = namei(path)) == 0){ // file not found
+        return 0;
+    }
+    ilock(ip);
+    if(!(omode & O_NOFOLLOW) && ip->type == T_SYMLINK) {
+        char next[MAXPATH];
+        if(readi(ip, 0, (uint64)next, 0, MAXPATH) == 0) {
+            iunlock(ip);
+            return 0;
+        }
+        iunlock(ip);
+        iput(ip);
+        return namei_check_symlink(next, depth + 1 ,omode);
+    }
+    iunlock(ip);
+    return ip;
+}
+
 uint64
 sys_open(void)
 {
@@ -323,9 +346,9 @@ sys_open(void)
       return -1;
     }
   } else {
-    if((ip = namei(path)) == 0){
-      end_op();
-      return -1;
+    if((ip = namei_check_symlink(path , 0, omode)) == 0) {
+        end_op();
+        return -1;
     }
     ilock(ip);
     if(ip->type == T_DIR && omode != O_RDONLY){
@@ -502,4 +525,54 @@ sys_pipe(void)
     return -1;
   }
   return 0;
+}
+
+uint64
+sys_symlink (void) {
+    char name[DIRSIZ], target[MAXPATH], path[MAXPATH];
+    struct inode *dp, *ip;
+
+    if(argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
+        return -1;
+
+    begin_op();
+
+    if((ip = namei(target)) != 0) { // if target exists
+        ilock(ip);
+        if(ip->type == T_DIR) { // should not be a directory
+            iunlockput(ip);
+            end_op();
+            return -1;
+        }
+        ip->nlink++;
+        iupdate(ip);
+        iunlockput(ip);
+    }
+
+    if((dp = namei(path)) == 0) {
+        if((dp = nameiparent(path, name)) == 0) {
+            goto bad;
+        }
+        else {
+            iput(dp);
+            if((dp = create(path, T_SYMLINK, 0, 0)) == 0) {
+                goto bad;
+            }
+            iunlock(dp);
+        }
+    }
+
+    ilock(dp);
+    writei(dp, 0, (uint64)target, 0, MAXPATH);
+    iunlockput(dp);
+    end_op();
+    return 0;
+
+    bad:
+    ilock(ip);
+    ip->nlink--;
+    iupdate(ip);
+    iunlockput(ip);
+    end_op();
+    return -1;
 }

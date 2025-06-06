@@ -1,0 +1,27 @@
+big file:
+原本只有直接索引和一级间接索引，
+现在增加了二级间接索引，使能存储的文件更大。
+需要在 bmap 中加入对二级间接索引的处理
+symlink:
+在 path 处文件的 data 中写入符号链接的路径，并标注文件类型
+在 open 时，如果遇到符号链接，则需要递归解析符号链接
+规定符号链接不能超过 10 层，避免成环导致死循环
+test-bigfile: time limit 180->300s
+test-usertests: time limit 300->600s 
+
+== Test running bigfile == 
+$ make qemu-gdb
+running bigfile: OK (136.8s) 
+== Test running symlinktest == 
+$ make qemu-gdb
+(0.7s) 
+== Test   symlinktest: symlinks == 
+  symlinktest: symlinks: OK 
+== Test   symlinktest: concurrent symlinks == 
+  symlinktest: concurrent symlinks: OK 
+== Test usertests == 
+$ make qemu-gdb
+usertests: OK (212.1s) 
+== Test lab-fs-report.txt == 
+lab-fs-report.txt: OK
+Score: 104/104
